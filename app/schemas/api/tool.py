@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 from app.schemas.enums import DepartmentType, ToolStatusType
 
@@ -120,4 +121,22 @@ class ToolCreateOut(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ToolUpdateIn(BaseModel):
+    name: Annotated[str | None, Field(min_length=2, max_length=100)] = None
+    description: str | None = None
+    vendor: Annotated[str | None, Field(max_length=100)] = None
+    website_url: HttpUrl | None = None
+    category_id: int | None = None
+    monthly_cost: Decimal | None = Field(None, ge=0)
+    owner_department: DepartmentType | None = None
+    status: ToolStatusType | None = None  # Validation via l'Enum demandé
+
+    @field_validator("monthly_cost")
+    @classmethod
+    def validate_decimal_places(cls, v: Decimal | None) -> Decimal | None:
+        if v is not None and len(str(v).partition(".")[2].rstrip("0")) > 2:
+            raise ValueError("Le coût mensuel ne peut pas avoir plus de 2 décimales")
+        return v
 

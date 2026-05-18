@@ -1,8 +1,9 @@
 import pytest
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import HttpUrl
 from app.controllers.tool import tool_controller
-from app.schemas.api.tool import ToolCreateIn
+from app.schemas.api.tool import ToolCreateIn, DepartmentType, ToolUpdateIn, ToolStatusType
 
 # Tous les tests de ce fichier sont asynchrones
 pytestmark = pytest.mark.asyncio
@@ -76,10 +77,10 @@ async def test_create_tool_success(db_session: AsyncSession, seed_data):
         name="Linear",
         description="Issue tracking",
         vendor="Linear Inc",
-        website_url="https://linear.app",
+        website_url=HttpUrl("https://linear.app"),
         category_id=1,  # "Development" ou "Communication" inséré par seed_data
         monthly_cost=Decimal("8.00"),
-        owner_department="Engineering"
+        owner_department=DepartmentType.ENGINEERING
     )
 
     new_tool = await tool_controller.create_new_tool(db_session, tool_in=payload)
@@ -93,10 +94,10 @@ async def test_create_tool_duplicate_name(db_session: AsyncSession, seed_data):
     payload = ToolCreateIn(
         name="Jira",  # Déjà présent dans seed_data
         vendor="Atlassian",
-        website_url="https://www.atlassian.com/software/jira",
+        website_url=HttpUrl("https://www.atlassian.com/software/jira"),
         category_id=1,
         monthly_cost=Decimal("45.00"),
-        owner_department="Engineering"
+        owner_department=DepartmentType.ENGINEERING
     )
 
     with pytest.raises(ValueError) as exc_info:
@@ -108,12 +109,35 @@ async def test_create_tool_invalid_category(db_session: AsyncSession, seed_data)
     payload = ToolCreateIn(
         name="Figma",
         vendor="Figma",
-        website_url="https://www.figma.com",
+        website_url=HttpUrl("https://www.figma.com"),
         category_id=999,  # Inexistant
         monthly_cost=Decimal("15.00"),
-        owner_department="Design"
+        owner_department=DepartmentType.DESIGN
     )
 
     with pytest.raises(ValueError) as exc_info:
         await tool_controller.create_new_tool(db_session, tool_in=payload)
     assert "n'existe pas" in str(exc_info.value)
+
+async def test_update_tool_success(db_session: AsyncSession, seed_data):
+    """Test d'une mise à jour partielle réussie (prix, statut, description)."""
+    payload = ToolUpdateIn.model_validate({
+        "monthly_cost": Decimal("7.00"),
+        "status": ToolStatusType.DEPRECATED,
+        "description": "Updated description after renewal",
+    })
+
+    # On modifie l'outil avec l'ID 1 (Slack par exemple)
+    updated = await tool_controller.update_existing_tool(db_session, tool_id=1, tool_in=payload)
+
+    assert updated is not None
+    assert updated.monthly_cost == Decimal("7.00")
+    assert updated.status == "deprecated"
+    assert updated.description == "Updated description after renewal"
+    assert updated.name == "Slack"  # Les champs non modifiés restent intacts
+
+async def test_update_tool_not_found(db_session: AsyncSession, seed_data):
+    """Test qu'un outil inexistant renvoie None (déclenchant un 404)."""
+    payload = ToolUpdateIn.model_validate({"monthly_cost": Decimal("10.00")})
+    result = await tool_controller.update_existing_tool(db_session, tool_id=999, tool_in=payload)
+    assert result is None

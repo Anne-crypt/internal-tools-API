@@ -6,7 +6,7 @@ from app.crud.tool import tool_crud
 from app.models.category import Category
 from app.models.tool import Tool
 
-from app.schemas.api.tool import ToolCreateIn
+from app.schemas.api.tool import ToolCreateIn, ToolUpdateIn
 
 class ToolController:
     async def get_filtered_tools_for_business(
@@ -96,5 +96,30 @@ class ToolController:
 
         # 3. Appel du CRUD pour l'insertion
         return await tool_crud.create_tool(db, obj_in=tool_in)
+
+
+    async def update_existing_tool(self, db: AsyncSession, tool_id: int, *, tool_in: ToolUpdateIn) -> Tool | None:
+        """Gère les vérifications métiers avant de modifier un outil."""
+
+        # 1. Vérifier si l'outil existe
+        current_tool = await tool_crud.get_by_id_with_category(db, tool_id=tool_id)
+        if not current_tool:
+            return None
+
+        # 2. Validation : Si la catégorie change, existe-t-elle ?
+        if tool_in.category_id is not None:
+            category_check = await db.execute(select(Category).where(Category.id == tool_in.category_id))
+            if not category_check.scalar_one_or_none():
+                raise ValueError(f"La catégorie avec l'ID {tool_in.category_id} n'existe pas")
+
+        # 3. Validation : Si le nom change, est-il unique ?
+        if tool_in.name is not None and tool_in.name.lower() != current_tool.name.lower():
+            name_check = await db.execute(select(Tool).where(func.lower(Tool.name) == func.lower(tool_in.name)))
+            if name_check.scalar_one_or_none():
+                raise ValueError(f"Un outil avec le nom '{tool_in.name}' existe déjà")
+
+        # 4. Exécution de la mise à jour via le CRUD
+        return await tool_crud.update_tool(db, db_obj=current_tool, obj_in=tool_in)
+
 
 tool_controller = ToolController()

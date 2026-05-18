@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.controllers.tool import tool_controller
 from app.database import get_db
-from app.schemas.api.tool import ToolPaginatedResponse, ToolDetailOut, ToolCreateIn, ToolCreateOut
+from app.schemas.api.tool import ToolPaginatedResponse, ToolDetailOut, ToolCreateIn, ToolCreateOut, ToolUpdateIn
 
 router = APIRouter()
 
@@ -86,6 +86,37 @@ async def create_tool(
             "active_users_count": new_tool.active_users_count,
             "created_at": new_tool.created_at,
             "updated_at": new_tool.updated_at
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/{tool_id}", response_model=ToolCreateOut, summary="Modifier un outil existant")
+async def update_tool(
+    *,
+    db: AsyncSession = Depends(get_db),
+    tool_id: int = Path(..., ge=1),
+    payload: ToolUpdateIn
+) -> Any:
+    """Met à jour partiellement ou totalement un outil après validations métiers."""
+    try:
+        updated_tool = await tool_controller.update_existing_tool(db, tool_id=tool_id, tool_in=payload)
+
+        if not updated_tool:
+            raise HTTPException(status_code=404, detail="Outil SaaS introuvable")
+
+        return {
+            "id": updated_tool.id,
+            "name": updated_tool.name,
+            "description": updated_tool.description,
+            "vendor": updated_tool.vendor,
+            "website_url": updated_tool.website_url,
+            "category": updated_tool.category.name,
+            "monthly_cost": float(updated_tool.monthly_cost),
+            "owner_department": updated_tool.owner_department,
+            "status": updated_tool.status,
+            "active_users_count": updated_tool.active_users_count,
+            "created_at": updated_tool.created_at,
+            "updated_at": updated_tool.updated_at
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -8,7 +8,7 @@ from app.models.tool import Tool
 from app.models.category import Category
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 
-from app.schemas.api.tool import ToolCreateIn
+from app.schemas.api.tool import ToolCreateIn, ToolUpdateIn
 
 
 class CRUDTool(CRUDBase[Tool]):
@@ -140,6 +140,30 @@ class CRUDTool(CRUDBase[Tool]):
         await db.commit()
 
         # On recharge l'objet avec sa catégorie pour le contrôleur
+        stmt = select(Tool).where(Tool.id == db_obj.id).options(joinedload(Tool.category))
+        result = await db.execute(stmt)
+        return result.scalar_one()
+
+    async def update_tool(self, db: AsyncSession, *, db_obj: Tool, obj_in: ToolUpdateIn) -> Tool:
+        """Met à jour dynamiquement un outil existant et recharge ses relations."""
+        # Convertit le schéma d'entrée en dictionnaire en excluant les valeurs non fournies
+        update_data = obj_in.model_dump(exclude_unset=True)
+
+        for field in update_data:
+            # Traitement spécifique pour les Enums si nécessaire
+            if field == "owner_department" and update_data[field]:
+                db_obj.owner_department = update_data[field].value
+            elif field == "status" and update_data[field]:
+                db_obj.status = update_data[field].value
+            elif field == "website_url" and update_data[field]:
+                db_obj.website_url = str(update_data[field])
+            else:
+                setattr(db_obj, field, update_data[field])
+
+        db.add(db_obj)
+        await db.commit()
+
+        # Recharge pour récupérer le nom de la catégorie suite aux changements potentiels
         stmt = select(Tool).where(Tool.id == db_obj.id).options(joinedload(Tool.category))
         result = await db.execute(stmt)
         return result.scalar_one()
