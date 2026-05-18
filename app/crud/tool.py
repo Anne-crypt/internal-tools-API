@@ -111,5 +111,14 @@ class CRUDTool(CRUDBase[Tool]):
             "filters_applied": filters_applied
         }
 
-# Instance unique à importer dans tes routes
+    async def get_by_id_with_category(self, db: AsyncSession, tool_id: int) -> Tool | None:
+        """Récupère un outil par son ID avec sa catégorie préchargée."""
+        stmt = (
+            select(Tool)
+            .where(Tool.id == tool_id)
+            .options(joinedload(Tool.category))
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
 tool_crud = CRUDTool(Tool)

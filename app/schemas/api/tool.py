@@ -58,3 +58,31 @@ class ToolPaginatedResponse(BaseModel):
     total: int
     filtered: int
     filters_applied: dict[str, str | float | None]
+
+
+class UsageMetricsDetail(BaseModel):
+    total_sessions: int
+    avg_session_minutes: int
+
+
+class UsageMetrics(BaseModel):
+    last_30_days: UsageMetricsDetail
+
+
+class ToolDetailOut(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    vendor: str | None = None
+    website_url: str | None = None
+    category: str
+    monthly_cost: float
+    owner_department: str
+    status: str
+    active_users_count: int
+    total_monthly_cost: float  # Le champ calculé par le Controller
+    created_at: datetime
+    updated_at: datetime
+    usage_metrics: UsageMetrics
+
+    model_config = ConfigDict(from_attributes=True)

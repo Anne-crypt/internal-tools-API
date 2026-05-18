@@ -42,4 +42,38 @@ class ToolController:
             sort_order=sort_order
         )
 
+
+    async def get_tool_detail(self, db: AsyncSession, tool_id: int) -> dict[str, Any] | None:
+        """Gère la logique métier et les calculs financiers pour le détail d'un outil."""
+        tool = await tool_crud.get_by_id_with_category(db, tool_id=tool_id)
+        if not tool:
+            return None
+
+        # Logique métier : Calcul financier complet
+        total_monthly_cost = float(tool.monthly_cost) * tool.active_users_count
+
+        # Formatage de la réponse selon le contrat de Marcus
+        return {
+            "id": tool.id,
+            "name": tool.name,
+            "description": tool.description,
+            "vendor": tool.vendor,
+            "website_url": tool.website_url,
+            "category": tool.category.name,
+            "monthly_cost": float(tool.monthly_cost),
+            "owner_department": tool.owner_department,
+            "status": tool.status,
+            "active_users_count": tool.active_users_count,
+            "total_monthly_cost": total_monthly_cost,
+            "created_at": tool.created_at,
+            "updated_at": tool.updated_at,
+            # Mock des métriques en attendant une table dédiée
+            "usage_metrics": {
+                "last_30_days": {
+                    "total_sessions": 127,  # Logique fictive demandée
+                    "avg_session_minutes": 45
+                }
+            }
+        }
+
 tool_controller = ToolController()

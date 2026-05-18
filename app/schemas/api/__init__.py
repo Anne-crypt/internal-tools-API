@@ -5,7 +5,7 @@ from app.schemas.api.usage_log import UsageLogCreate, UsageLogOut
 
 __all__ = [
     "UserCreate", "UserUpdate", "UserOut",
-    "ToolCreate", "ToolUpdate", "ToolOut", "ToolWithCategoryNameOut", "ToolPaginatedResponse",
+    "ToolCreate", "ToolUpdate", "ToolOut", "ToolWithCategoryNameOut", "ToolPaginatedResponse", "ToolDetailOut",
     "AccessRequestCreate", "AccessRequestReview", "AccessRequestOut",
     "UsageLogCreate", "UsageLogOut"
 ]

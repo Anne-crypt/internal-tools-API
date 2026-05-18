@@ -1,11 +1,11 @@
 from decimal import Decimal
 from typing import Any
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.crud.tool import tool_crud
+from app.controllers.tool import tool_controller
 from app.database import get_db
-from app.schemas.api.tool import ToolPaginatedResponse
+from app.schemas.api.tool import ToolPaginatedResponse, ToolDetailOut
 
 router = APIRouter()
 
@@ -28,17 +28,31 @@ async def get_tools(
     Récupère la liste des outils avec un filtrage multicritère,
     une pagination et un système de tri dynamique.
     """
-    # On appelle notre fameuse méthode CRUD super musclée
-    result = await tool_crud.get_filtered_tools(
+    # On passe par le Controller pour centraliser la logique métier.
+    result = await tool_controller.get_filtered_tools_for_business(
         db,
         department=department,
         status=status,
         min_cost=min_cost,
         max_cost=max_cost,
-        category_name=category,
+        category=category,
         page=page,
         limit=limit,
         sort_by=sort_by,
         sort_order=sort_order
     )
     return result
+
+@router.get("/{tool_id}", response_model=ToolDetailOut, summary="Obtenir le détail financier complet d'un outil")
+async def get_tool_by_id(
+    *,
+    db: AsyncSession = Depends(get_db),
+    tool_id: int = Path(..., ge=1, description="L'identifiant numérique de l'outil")
+) -> Any:
+    """Récupère toutes les informations d'un outil avec ses métriques et coûts totaux."""
+    tool_detail = await tool_controller.get_tool_detail(db, tool_id=tool_id)
+
+    if not tool_detail:
+        raise HTTPException(status_code=404, detail="Outil SaaS introuvable")
+
+    return tool_detail

@@ -1,4 +1,5 @@
 import pytest
+from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.controllers.tool import tool_controller
 
@@ -33,7 +34,7 @@ async def test_get_filtered_tools_by_department_and_status(db_session: AsyncSess
 async def test_get_filtered_tools_by_cost_and_category(db_session: AsyncSession, seed_data):
     """Test du filtre coût et catégorie via le Controller."""
     result = await tool_controller.get_filtered_tools_for_business(
-        db_session, min_cost=10.00, max_cost=50.00, category="Development"
+        db_session, min_cost=Decimal("10.00"), max_cost=Decimal("50.00"), category="Development"
     )
 
     assert len(result["data"]) == 1
@@ -44,7 +45,25 @@ async def test_get_filtered_tools_validation_error(db_session: AsyncSession, see
     """Test de la logique métier : le coût min ne peut pas être supérieur au coût max."""
     with pytest.raises(ValueError) as exc_info:
         await tool_controller.get_filtered_tools_for_business(
-            db_session, min_cost=100.00, max_cost=50.00
+            db_session, min_cost=Decimal("100.00"), max_cost=Decimal("50.00")
         )
 
     assert str(exc_info.value) == "Le coût minimum ne peut pas être supérieur au coût maximum"
+
+
+async def test_get_tool_detail_success(db_session: AsyncSession, seed_data):
+    """Test de récupération réussie avec calcul du coût total et métriques."""
+    # Dans notre seed_data, Jira a l'ID 2 (généralement), monthly_cost = 45.00 et active_users = 10
+    # Le coût total doit être de 450.0
+    result = await tool_controller.get_tool_detail(db_session, tool_id=2)
+
+    assert result is not None
+    assert result["name"] == "Jira"
+    assert result["total_monthly_cost"] == 450.0  # Validation du calcul financier
+    assert result["usage_metrics"]["last_30_days"]["total_sessions"] == 127
+
+
+async def test_get_tool_detail_not_found(db_session: AsyncSession, seed_data):
+    """Test de la gestion du cas 404 (outil inexistant)."""
+    result = await tool_controller.get_tool_detail(db_session, tool_id=999)
+    assert result is None
