@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -11,7 +10,9 @@ from sqlalchemy import delete
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+TestingSessionLocal = async_sessionmaker(
+    autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
+)
 
 
 @pytest.fixture(scope="session")
@@ -54,16 +55,31 @@ async def seed_data(db_session: AsyncSession):
 
     # 2. Création des outils
     t1 = Tool(
-        name="Slack", vendor="Slack Tech", category_id=cat_comm.id,
-        monthly_cost=8.00, owner_department="Engineering", status="active", active_users_count=25
+        name="Slack",
+        vendor="Slack Tech",
+        category_id=cat_comm.id,
+        monthly_cost=8.00,
+        owner_department="Engineering",
+        status="active",
+        active_users_count=25,
     )
     t2 = Tool(
-        name="Jira", vendor="Atlassian", category_id=cat_dev.id,
-        monthly_cost=45.00, owner_department="Engineering", status="active", active_users_count=10
+        name="Jira",
+        vendor="Atlassian",
+        category_id=cat_dev.id,
+        monthly_cost=45.00,
+        owner_department="Engineering",
+        status="active",
+        active_users_count=10,
     )
     t3 = Tool(
-        name="Zoom", vendor="Zoom Video", category_id=cat_comm.id,
-        monthly_cost=15.00, owner_department="Sales", status="deprecated", active_users_count=5
+        name="Zoom",
+        vendor="Zoom Video",
+        category_id=cat_comm.id,
+        monthly_cost=15.00,
+        owner_department="Sales",
+        status="deprecated",
+        active_users_count=5,
     )
 
     db_session.add_all([t1, t2, t3])

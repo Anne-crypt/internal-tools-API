@@ -7,6 +7,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.tool import Tool
 
+
 class Category(Base):
     __tablename__ = "categories"
 

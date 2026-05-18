@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from app.models.user_tool_access import UserToolAccess
     from app.models.access_request import AccessRequest
 
+
 class User(Base):
     __tablename__ = "users"
 

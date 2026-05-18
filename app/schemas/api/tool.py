@@ -39,6 +39,7 @@ class ToolOut(ToolBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 # Sortie enrichie pour le filtre de Sarah
 class ToolWithCategoryNameOut(BaseModel):
     id: int
@@ -88,12 +89,23 @@ class ToolDetailOut(BaseModel):
 
 
 class ToolCreateIn(BaseModel):
-    name: str = Field(..., min_length=2, max_length=100, description="Nom obligatoire de 2 à 100 caractères")
+    name: str = Field(
+        ...,
+        min_length=2,
+        max_length=100,
+        description="Nom obligatoire de 2 à 100 caractères",
+    )
     description: str | None = None
-    vendor: str = Field(..., max_length=100, description="Fournisseur obligatoire, max 100 caractères")
-    website_url: HttpUrl | None = Field(None, description="Doit être une URL valide si fournie")
+    vendor: str = Field(
+        ..., max_length=100, description="Fournisseur obligatoire, max 100 caractères"
+    )
+    website_url: HttpUrl | None = Field(
+        None, description="Doit être une URL valide si fournie"
+    )
     category_id: int = Field(..., description="L'ID de la catégorie doit exister")
-    monthly_cost: Decimal = Field(..., ge=0, description="Le coût doit être supérieur ou égal à 0")
+    monthly_cost: Decimal = Field(
+        ..., ge=0, description="Le coût doit être supérieur ou égal à 0"
+    )
     owner_department: DepartmentType
 
     @field_validator("monthly_cost")
@@ -139,4 +151,3 @@ class ToolUpdateIn(BaseModel):
         if v is not None and len(str(v).partition(".")[2].rstrip("0")) > 2:
             raise ValueError("Le coût mensuel ne peut pas avoir plus de 2 décimales")
         return v
-

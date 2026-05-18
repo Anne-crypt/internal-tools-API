@@ -3,15 +3,17 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-async def validation_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+
+async def validation_exception_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
     """Intercepte les erreurs de validation (HTTP 400) et les formate selon la consigne."""
 
     if not isinstance(exc, RequestValidationError):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"error": "Validation failed", "message": str(exc)}
+            content={"error": "Validation failed", "message": str(exc)},
         )
-
 
     details = {}
     for error in exc.errors():
@@ -21,18 +23,18 @@ async def validation_exception_handler(request: Request, exc: Exception) -> JSON
 
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={
-            "error": "Validation failed",
-            "details": details
-        }
+        content={"error": "Validation failed", "details": details},
     )
 
-async def custom_http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+
+async def custom_http_exception_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
     """Intercepte les HTTP 404 et autres codes levés manuellement."""
     if not isinstance(exc, StarletteHTTPException):
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"error": "Internal server error", "message": str(exc)}
+            content={"error": "Internal server error", "message": str(exc)},
         )
 
     # Format personnalisé pour le 404 introuvable
@@ -43,8 +45,11 @@ async def custom_http_exception_handler(request: Request, exc: Exception) -> JSO
             status_code=status.HTTP_404_NOT_FOUND,
             content={
                 "error": "Tool not found",
-                "message": f"Tool with ID {tool_id} does not exist" if "introuvable" in str(exc.detail).lower() or "not found" in str(exc.detail).lower() else str(exc.detail)
-            }
+                "message": f"Tool with ID {tool_id} does not exist"
+                if "introuvable" in str(exc.detail).lower()
+                or "not found" in str(exc.detail).lower()
+                else str(exc.detail),
+            },
         )
 
     # Format générique pour les autres HTTPException (comme le 400 levé par le routeur)
@@ -52,9 +57,10 @@ async def custom_http_exception_handler(request: Request, exc: Exception) -> JSO
         status_code=exc.status_code,
         content={
             "error": "Bad request" if exc.status_code == 400 else "Error",
-            "message": str(exc.detail)
-        }
+            "message": str(exc.detail),
+        },
     )
+
 
 async def global_exception_handler(request: Request, exc: Exception):
     """Intercepte TOUTES les autres erreurs non gérées (HTTP 500 / Crash DB)."""
@@ -66,8 +72,5 @@ async def global_exception_handler(request: Request, exc: Exception):
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "error": "Internal server error",
-            "message": message
-        }
+        content={"error": "Internal server error", "message": message},
     )

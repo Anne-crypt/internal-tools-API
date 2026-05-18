@@ -8,6 +8,7 @@ from app.models.tool import Tool
 
 from app.schemas.api.tool import ToolCreateIn, ToolUpdateIn
 
+
 class ToolController:
     async def get_filtered_tools_for_business(
         self,
@@ -21,7 +22,7 @@ class ToolController:
         page: int = 1,
         limit: int = 10,
         sort_by: str = "name",
-        sort_order: str = "asc"
+        sort_order: str = "asc",
     ) -> dict[str, Any]:
         """
         Controller gérant la logique métier pour le filtrage des outils.
@@ -30,7 +31,9 @@ class ToolController:
         # Exemple de validation métier
         if min_cost is not None and max_cost is not None and min_cost > max_cost:
             # Ici on lèvera une exception personnalisée (on verra la gestion d'erreurs centrale après)
-            raise ValueError("Le coût minimum ne peut pas être supérieur au coût maximum")
+            raise ValueError(
+                "Le coût minimum ne peut pas être supérieur au coût maximum"
+            )
 
         # Appel de la couche ORM / CRUD
         return await tool_crud.get_filtered_tools(
@@ -43,11 +46,12 @@ class ToolController:
             page=page,
             limit=limit,
             sort_by=sort_by,
-            sort_order=sort_order
+            sort_order=sort_order,
         )
 
-
-    async def get_tool_detail(self, db: AsyncSession, tool_id: int) -> dict[str, Any] | None:
+    async def get_tool_detail(
+        self, db: AsyncSession, tool_id: int
+    ) -> dict[str, Any] | None:
         """Gère la logique métier et les calculs financiers pour le détail d'un outil."""
         tool = await tool_crud.get_by_id_with_category(db, tool_id=tool_id)
         if not tool:
@@ -75,30 +79,36 @@ class ToolController:
             "usage_metrics": {
                 "last_30_days": {
                     "total_sessions": 127,  # Logique fictive demandée
-                    "avg_session_minutes": 45
+                    "avg_session_minutes": 45,
                 }
-            }
+            },
         }
-
 
     async def create_new_tool(self, db: AsyncSession, *, tool_in: ToolCreateIn) -> Tool:
         """Gère la logique métier et les validations d'existence avant création."""
 
         # 1. Validation : Est-ce que la catégorie existe en DB ?
-        category_check = await db.execute(select(Category).where(Category.id == tool_in.category_id))
+        category_check = await db.execute(
+            select(Category).where(Category.id == tool_in.category_id)
+        )
         if not category_check.scalar_one_or_none():
-            raise ValueError(f"La catégorie avec l'ID {tool_in.category_id} n'existe pas")
+            raise ValueError(
+                f"La catégorie avec l'ID {tool_in.category_id} n'existe pas"
+            )
 
         # 2. Validation : Unicité du nom de l'outil
-        name_check = await db.execute(select(Tool).where(func.lower(Tool.name) == func.lower(tool_in.name)))
+        name_check = await db.execute(
+            select(Tool).where(func.lower(Tool.name) == func.lower(tool_in.name))
+        )
         if name_check.scalar_one_or_none():
             raise ValueError(f"Un outil avec le nom '{tool_in.name}' existe déjà")
 
         # 3. Appel du CRUD pour l'insertion
         return await tool_crud.create_tool(db, obj_in=tool_in)
 
-
-    async def update_existing_tool(self, db: AsyncSession, tool_id: int, *, tool_in: ToolUpdateIn) -> Tool | None:
+    async def update_existing_tool(
+        self, db: AsyncSession, tool_id: int, *, tool_in: ToolUpdateIn
+    ) -> Tool | None:
         """Gère les vérifications métiers avant de modifier un outil."""
 
         # 1. Vérifier si l'outil existe
@@ -108,13 +118,22 @@ class ToolController:
 
         # 2. Validation : Si la catégorie change, existe-t-elle ?
         if tool_in.category_id is not None:
-            category_check = await db.execute(select(Category).where(Category.id == tool_in.category_id))
+            category_check = await db.execute(
+                select(Category).where(Category.id == tool_in.category_id)
+            )
             if not category_check.scalar_one_or_none():
-                raise ValueError(f"La catégorie avec l'ID {tool_in.category_id} n'existe pas")
+                raise ValueError(
+                    f"La catégorie avec l'ID {tool_in.category_id} n'existe pas"
+                )
 
         # 3. Validation : Si le nom change, est-il unique ?
-        if tool_in.name is not None and tool_in.name.lower() != current_tool.name.lower():
-            name_check = await db.execute(select(Tool).where(func.lower(Tool.name) == func.lower(tool_in.name)))
+        if (
+            tool_in.name is not None
+            and tool_in.name.lower() != current_tool.name.lower()
+        ):
+            name_check = await db.execute(
+                select(Tool).where(func.lower(Tool.name) == func.lower(tool_in.name))
+            )
             if name_check.scalar_one_or_none():
                 raise ValueError(f"Un outil avec le nom '{tool_in.name}' existe déjà")
 

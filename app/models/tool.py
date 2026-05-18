@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.usage_log import UsageLog
     from app.models.cost_tracking import CostTracking
 
+
 class Tool(Base):
     __tablename__ = "tools"
 
@@ -20,10 +21,14 @@ class Tool(Base):
     description: Mapped[str | None] = mapped_column(nullable=True)
     vendor: Mapped[str | None] = mapped_column(String(100), nullable=True)
     website_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"), nullable=False)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id", ondelete="RESTRICT"), nullable=False
+    )
     monthly_cost: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     active_users_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    owner_department: Mapped[str] = mapped_column(String, nullable=False) # Type énuméré géré par String/Enum côté API
+    owner_department: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # Type énuméré géré par String/Enum côté API
     status: Mapped[str] = mapped_column(String, default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -24,7 +24,7 @@ class CRUDTool(CRUDBase[Tool]):
         page: int = 1,
         limit: int = 10,
         sort_by: str = "name",  # cost, name, date
-        sort_order: str = "asc"  # asc, desc
+        sort_order: str = "asc",  # asc, desc
     ) -> dict[str, Any]:
 
         # 1. Requête pour le TOTAL absolu d'outils en BDD (sans filtres)
@@ -88,7 +88,7 @@ class CRUDTool(CRUDBase[Tool]):
                 "status": t.status,
                 "website_url": t.website_url,
                 "active_users_count": t.active_users_count,
-                "created_at": t.created_at.isoformat() + "Z" if t.created_at else None
+                "created_at": t.created_at.isoformat() + "Z" if t.created_at else None,
             }
             for t in tools
         ]
@@ -110,16 +110,14 @@ class CRUDTool(CRUDBase[Tool]):
             "data": data_formatted,
             "total": total_count,
             "filtered": filtered_count,
-            "filters_applied": filters_applied
+            "filters_applied": filters_applied,
         }
 
-    async def get_by_id_with_category(self, db: AsyncSession, tool_id: int) -> Tool | None:
+    async def get_by_id_with_category(
+        self, db: AsyncSession, tool_id: int
+    ) -> Tool | None:
         """Récupère un outil par son ID avec sa catégorie préchargée."""
-        stmt = (
-            select(Tool)
-            .where(Tool.id == tool_id)
-            .options(joinedload(Tool.category))
-        )
+        stmt = select(Tool).where(Tool.id == tool_id).options(joinedload(Tool.category))
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -132,19 +130,25 @@ class CRUDTool(CRUDBase[Tool]):
             website_url=str(obj_in.website_url) if obj_in.website_url else None,
             category_id=obj_in.category_id,
             monthly_cost=obj_in.monthly_cost,
-            owner_department=obj_in.owner_department.value if hasattr(obj_in.owner_department, 'value') else obj_in.owner_department,
+            owner_department=obj_in.owner_department.value
+            if hasattr(obj_in.owner_department, "value")
+            else obj_in.owner_department,
             status="active",  # Valeur par défaut demandée
-            active_users_count=0  # Initialisé à 0
+            active_users_count=0,  # Initialisé à 0
         )
         db.add(db_obj)
         await db.commit()
 
         # On recharge l'objet avec sa catégorie pour le contrôleur
-        stmt = select(Tool).where(Tool.id == db_obj.id).options(joinedload(Tool.category))
+        stmt = (
+            select(Tool).where(Tool.id == db_obj.id).options(joinedload(Tool.category))
+        )
         result = await db.execute(stmt)
         return result.scalar_one()
 
-    async def update_tool(self, db: AsyncSession, *, db_obj: Tool, obj_in: ToolUpdateIn) -> Tool:
+    async def update_tool(
+        self, db: AsyncSession, *, db_obj: Tool, obj_in: ToolUpdateIn
+    ) -> Tool:
         """Met à jour dynamiquement un outil existant et recharge ses relations."""
         # Convertit le schéma d'entrée en dictionnaire en excluant les valeurs non fournies
         update_data = obj_in.model_dump(exclude_unset=True)
@@ -164,8 +168,11 @@ class CRUDTool(CRUDBase[Tool]):
         await db.commit()
 
         # Recharge pour récupérer le nom de la catégorie suite aux changements potentiels
-        stmt = select(Tool).where(Tool.id == db_obj.id).options(joinedload(Tool.category))
+        stmt = (
+            select(Tool).where(Tool.id == db_obj.id).options(joinedload(Tool.category))
+        )
         result = await db.execute(stmt)
         return result.scalar_one()
+
 
 tool_crud = CRUDTool(Tool)

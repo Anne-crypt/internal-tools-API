@@ -15,7 +15,9 @@ class CRUDBase(Generic[ModelType]):
         result = await db.execute(select(self.model).where(self.model.id == id))
         return result.scalar_one_or_none()
 
-    async def get_multi(self, db: AsyncSession, skip: int = 0, limit: int = 100) -> list[ModelType]:
+    async def get_multi(
+        self, db: AsyncSession, skip: int = 0, limit: int = 100
+    ) -> list[ModelType]:
         result = await db.execute(select(self.model).offset(skip).limit(limit))
         return list(result.scalars().all())
 
