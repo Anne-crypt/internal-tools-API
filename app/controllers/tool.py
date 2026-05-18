@@ -1,8 +1,12 @@
 from decimal import Decimal
 from typing import Any
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.crud.tool import tool_crud
+from app.models.category import Category
+from app.models.tool import Tool
 
+from app.schemas.api.tool import ToolCreateIn
 
 class ToolController:
     async def get_filtered_tools_for_business(
@@ -75,5 +79,22 @@ class ToolController:
                 }
             }
         }
+
+
+    async def create_new_tool(self, db: AsyncSession, *, tool_in: ToolCreateIn) -> Tool:
+        """Gère la logique métier et les validations d'existence avant création."""
+
+        # 1. Validation : Est-ce que la catégorie existe en DB ?
+        category_check = await db.execute(select(Category).where(Category.id == tool_in.category_id))
+        if not category_check.scalar_one_or_none():
+            raise ValueError(f"La catégorie avec l'ID {tool_in.category_id} n'existe pas")
+
+        # 2. Validation : Unicité du nom de l'outil
+        name_check = await db.execute(select(Tool).where(func.lower(Tool.name) == func.lower(tool_in.name)))
+        if name_check.scalar_one_or_none():
+            raise ValueError(f"Un outil avec le nom '{tool_in.name}' existe déjà")
+
+        # 3. Appel du CRUD pour l'insertion
+        return await tool_crud.create_tool(db, obj_in=tool_in)
 
 tool_controller = ToolController()

@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 from app.schemas.enums import DepartmentType, ToolStatusType
 
 
@@ -46,8 +46,8 @@ class ToolWithCategoryNameOut(BaseModel):
     vendor: str | None = None
     category: str  # Le nom de la catégorie via le JOIN
     monthly_cost: float
-    owner_department: str
-    status: str
+    owner_department: DepartmentType
+    status: ToolStatusType
     website_url: str | None = None
     active_users_count: int
     created_at: datetime
@@ -77,12 +77,47 @@ class ToolDetailOut(BaseModel):
     website_url: str | None = None
     category: str
     monthly_cost: float
-    owner_department: str
-    status: str
+    owner_department: DepartmentType
+    status: ToolStatusType
     active_users_count: int
     total_monthly_cost: float  # Le champ calculé par le Controller
     created_at: datetime
     updated_at: datetime
     usage_metrics: UsageMetrics
 
+
+class ToolCreateIn(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100, description="Nom obligatoire de 2 à 100 caractères")
+    description: str | None = None
+    vendor: str = Field(..., max_length=100, description="Fournisseur obligatoire, max 100 caractères")
+    website_url: HttpUrl | None = Field(None, description="Doit être une URL valide si fournie")
+    category_id: int = Field(..., description="L'ID de la catégorie doit exister")
+    monthly_cost: Decimal = Field(..., ge=0, description="Le coût doit être supérieur ou égal à 0")
+    owner_department: DepartmentType
+
+    @field_validator("monthly_cost")
+    @classmethod
+    def validate_decimal_places(cls, v: Decimal) -> Decimal:
+        # Vérification des 2 décimales maximum requis
+        exponent = v.as_tuple().exponent
+        if isinstance(exponent, int) and exponent < -2:
+            raise ValueError("Le coût mensuel ne peut pas avoir plus de 2 décimales")
+        return v
+
+
+class ToolCreateOut(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    vendor: str
+    website_url: str | None = None
+    category: str  # Lisa veut le nom de la catégorie, pas l'ID !
+    monthly_cost: float
+    owner_department: DepartmentType
+    status: ToolStatusType
+    active_users_count: int
+    created_at: datetime
+    updated_at: datetime
+
     model_config = ConfigDict(from_attributes=True)
+

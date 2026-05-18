@@ -1,11 +1,11 @@
 from decimal import Decimal
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.controllers.tool import tool_controller
 from app.database import get_db
-from app.schemas.api.tool import ToolPaginatedResponse, ToolDetailOut
+from app.schemas.api.tool import ToolPaginatedResponse, ToolDetailOut, ToolCreateIn, ToolCreateOut
 
 router = APIRouter()
 
@@ -56,3 +56,36 @@ async def get_tool_by_id(
         raise HTTPException(status_code=404, detail="Outil SaaS introuvable")
 
     return tool_detail
+
+@router.post(
+    "",
+    response_model=ToolCreateOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Créer un nouvel outil business"
+)
+async def create_tool(
+    *,
+    db: AsyncSession = Depends(get_db),
+    payload: ToolCreateIn
+) -> Any:
+    """Ajoute un nouvel outil dans le catalogue après validations strictes."""
+    try:
+        new_tool = await tool_controller.create_new_tool(db, tool_in=payload)
+
+        # Formatage de la réponse pour mapper l'objet Category imbriqué vers le champ plat 'category'
+        return {
+            "id": new_tool.id,
+            "name": new_tool.name,
+            "description": new_tool.description,
+            "vendor": new_tool.vendor,
+            "website_url": new_tool.website_url,
+            "category": new_tool.category.name, # Extraction du JOIN
+            "monthly_cost": float(new_tool.monthly_cost),
+            "owner_department": new_tool.owner_department,
+            "status": new_tool.status,
+            "active_users_count": new_tool.active_users_count,
+            "created_at": new_tool.created_at,
+            "updated_at": new_tool.updated_at
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

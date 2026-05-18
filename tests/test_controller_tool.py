@@ -2,6 +2,7 @@ import pytest
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.controllers.tool import tool_controller
+from app.schemas.api.tool import ToolCreateIn
 
 # Tous les tests de ce fichier sont asynchrones
 pytestmark = pytest.mark.asyncio
@@ -67,3 +68,52 @@ async def test_get_tool_detail_not_found(db_session: AsyncSession, seed_data):
     """Test de la gestion du cas 404 (outil inexistant)."""
     result = await tool_controller.get_tool_detail(db_session, tool_id=999)
     assert result is None
+
+
+async def test_create_tool_success(db_session: AsyncSession, seed_data):
+    """Test de création réussie avec des données valides."""
+    payload = ToolCreateIn(
+        name="Linear",
+        description="Issue tracking",
+        vendor="Linear Inc",
+        website_url="https://linear.app",
+        category_id=1,  # "Development" ou "Communication" inséré par seed_data
+        monthly_cost=Decimal("8.00"),
+        owner_department="Engineering"
+    )
+
+    new_tool = await tool_controller.create_new_tool(db_session, tool_in=payload)
+    assert new_tool.id is not None
+    assert new_tool.name == "Linear"
+    assert new_tool.active_users_count == 0
+    assert new_tool.status == "active"
+
+async def test_create_tool_duplicate_name(db_session: AsyncSession, seed_data):
+    """Test qu'on ne peut pas créer un outil avec un nom déjà existant (ex: Jira)."""
+    payload = ToolCreateIn(
+        name="Jira",  # Déjà présent dans seed_data
+        vendor="Atlassian",
+        website_url="https://www.atlassian.com/software/jira",
+        category_id=1,
+        monthly_cost=Decimal("45.00"),
+        owner_department="Engineering"
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        await tool_controller.create_new_tool(db_session, tool_in=payload)
+    assert "existe déjà" in str(exc_info.value)
+
+async def test_create_tool_invalid_category(db_session: AsyncSession, seed_data):
+    """Test qu'on refuse la création si la catégorie n'existe pas."""
+    payload = ToolCreateIn(
+        name="Figma",
+        vendor="Figma",
+        website_url="https://www.figma.com",
+        category_id=999,  # Inexistant
+        monthly_cost=Decimal("15.00"),
+        owner_department="Design"
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        await tool_controller.create_new_tool(db_session, tool_in=payload)
+    assert "n'existe pas" in str(exc_info.value)
