@@ -12,6 +12,7 @@ from app.schemas.api.tool import (
     ToolCreateOut,
     ToolUpdateIn,
 )
+from app.schemas.enums import DepartmentType, ToolStatusType
 
 router = APIRouter()
 
@@ -24,10 +25,10 @@ router = APIRouter()
 async def get_tools(
     *,
     db: AsyncSession = Depends(get_db),
-    department: str | None = Query(
+    department: DepartmentType | None = Query(
         None, description="Filtrer par département (ex: Engineering)"
     ),
-    status: str | None = Query(
+    status: ToolStatusType | None = Query(
         None, description="Filtrer par statut (active, deprecated, trial)"
     ),
     min_cost: Decimal | None = Query(None, description="Coût mensuel minimum"),

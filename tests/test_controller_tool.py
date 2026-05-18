@@ -30,7 +30,9 @@ async def test_get_filtered_tools_by_department_and_status(
 ):
     """Test du filtre combiné via le Controller."""
     result = await tool_controller.get_filtered_tools_for_business(
-        db_session, department="Engineering", status="active"
+        db_session,
+        department=DepartmentType.ENGINEERING,
+        status=ToolStatusType.ACTIVE,
     )
 
     assert len(result["data"]) == 2

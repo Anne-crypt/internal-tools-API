@@ -7,6 +7,7 @@ from app.models.category import Category
 from app.models.tool import Tool
 
 from app.schemas.api.tool import ToolCreateIn, ToolUpdateIn
+from app.schemas.enums import DepartmentType, ToolStatusType
 
 
 class ToolController:
@@ -14,8 +15,8 @@ class ToolController:
         self,
         db: AsyncSession,
         *,
-        department: str | None = None,
-        status: str | None = None,
+        department: DepartmentType | None = None,
+        status: ToolStatusType | None = None,
         min_cost: Decimal | None = None,
         max_cost: Decimal | None = None,
         category: str | None = None,

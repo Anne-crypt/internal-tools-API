@@ -9,6 +9,7 @@ from app.models.category import Category
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 
 from app.schemas.api.tool import ToolCreateIn, ToolUpdateIn
+from app.schemas.enums import DepartmentType, ToolStatusType
 
 
 class CRUDTool(CRUDBase[Tool]):
@@ -16,8 +17,8 @@ class CRUDTool(CRUDBase[Tool]):
         self,
         db: AsyncSession,
         *,
-        department: str | None = None,
-        status: str | None = None,
+        department: DepartmentType | None = None,
+        status: ToolStatusType | None = None,
         min_cost: Decimal | None = None,
         max_cost: Decimal | None = None,
         category_name: str | None = None,
@@ -96,9 +97,9 @@ class CRUDTool(CRUDBase[Tool]):
         # Dictionnaire des filtres effectivement appliqués
         filters_applied: dict[str, Any] = {}
         if department:
-            filters_applied["department"] = department
+            filters_applied["department"] = department.value
         if status:
-            filters_applied["status"] = status
+            filters_applied["status"] = status.value
         if min_cost is not None:
             filters_applied["min_cost"] = float(min_cost)
         if max_cost is not None:
@@ -130,10 +131,8 @@ class CRUDTool(CRUDBase[Tool]):
             website_url=str(obj_in.website_url) if obj_in.website_url else None,
             category_id=obj_in.category_id,
             monthly_cost=obj_in.monthly_cost,
-            owner_department=obj_in.owner_department.value
-            if hasattr(obj_in.owner_department, "value")
-            else obj_in.owner_department,
-            status="active",  # Valeur par défaut demandée
+            owner_department=obj_in.owner_department,
+            status=ToolStatusType.ACTIVE,  # Valeur par défaut demandée
             active_users_count=0,  # Initialisé à 0
         )
         db.add(db_obj)
@@ -156,9 +155,9 @@ class CRUDTool(CRUDBase[Tool]):
         for field in update_data:
             # Traitement spécifique pour les Enums si nécessaire
             if field == "owner_department" and update_data[field]:
-                db_obj.owner_department = update_data[field].value
+                db_obj.owner_department = update_data[field]
             elif field == "status" and update_data[field]:
-                db_obj.status = update_data[field].value
+                db_obj.status = update_data[field]
             elif field == "website_url" and update_data[field]:
                 db_obj.website_url = str(update_data[field])
             else:

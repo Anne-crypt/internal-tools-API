@@ -1,6 +1,7 @@
 from fastapi import Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy import exc as sqlalchemy_exc
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
@@ -64,13 +65,47 @@ async def custom_http_exception_handler(
 
 async def global_exception_handler(request: Request, exc: Exception):
     """Intercepte TOUTES les autres erreurs non gérées (HTTP 500 / Crash DB)."""
-    # Tu peux logger l'erreur ici pour le debug interne : print(f"CRASH: {exc}")
+    # logger l'erreur ici pour le debug interne : print(f"CRASH: {exc}")
 
-    message = "An unexpected error occurred"
-    if "connection" in str(exc).lower() or "dial" in str(exc).lower():
-        message = "Database connection failed"
+    print(f"--- CRASH DETECTED --- Type: {type(exc)} | Message: {str(exc)}")
+
+    error_msg = str(exc)
+
+    if (
+        isinstance(exc, ValueError)
+        or "coût" in error_msg.lower()
+        or "supérieur" in error_msg.lower()
+        or "existe déjà" in error_msg.lower()
+    ):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "error": "Bad request",
+                "message": error_msg
+            }
+        )
+    if "connection" in error_msg.lower() or "dialing" in error_msg.lower():
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "error": "Internal server error",
+                "message": "Database connection failed"
+            }
+        )
+
+    if isinstance(exc, sqlalchemy_exc.DBAPIError):
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "error": "Internal server error",
+                "message": "Database error occurred"
+            }
+        )
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"error": "Internal server error", "message": message},
+        content={
+            "error": "Internal server error",
+            "message": "An unexpected error occurred"
+        }
     )
