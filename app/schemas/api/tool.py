@@ -30,10 +30,31 @@ class ToolUpdate(BaseModel):
     status: ToolStatusType | None = None
 
 
+# Sortie brute (miroir du modèle)
 class ToolOut(ToolBase):
     id: int
     active_users_count: int
     created_at: datetime
-    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+# Sortie enrichie pour le filtre de Sarah
+class ToolWithCategoryNameOut(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    vendor: str | None = None
+    category: str  # Le nom de la catégorie via le JOIN
+    monthly_cost: float
+    owner_department: str
+    status: str
+    website_url: str | None = None
+    active_users_count: int
+    created_at: datetime
+
+
+class ToolPaginatedResponse(BaseModel):
+    data: list[ToolWithCategoryNameOut]
+    total: int
+    filtered: int
+    filters_applied: dict[str, str | float | None]
