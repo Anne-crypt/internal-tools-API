@@ -3,7 +3,8 @@ from collections.abc import Awaitable, Callable
 from typing import cast
 from starlette.requests import Request
 from starlette.responses import Response
-from app.api.v1.endpoints import tool
+from app.api.v1.endpoints.tool import router as tool_router
+from importlib import import_module
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -19,6 +20,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
+analytics_router = import_module("app.api.v1.endpoints.anatytics").router
+
 ExceptionHandler = Callable[[Request, Exception], Response | Awaitable[Response]]
 
 # On écrase les réponses d'erreurs par défaut de FastAPI par les tiennes :
@@ -31,7 +34,8 @@ app.add_exception_handler(
 app.add_exception_handler(Exception, global_exception_handler)
 
 # Inclusion des routes avec le préfixe demandé /api/tools
-app.include_router(tool.router, prefix="/api/tools", tags=["Tools"])
+app.include_router(tool_router, prefix="/api/tools", tags=["Tools"])
+app.include_router(analytics_router, prefix="/api/analytics", tags=["Analytics"])
 
 
 @app.get("/")
