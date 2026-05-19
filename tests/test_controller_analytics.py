@@ -1,7 +1,9 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
 from app.controllers.analytics import analytics_controller
-from app.schemas.api.analytics import DepartmentCostResponse
+from app.schemas.api.analytics import DepartmentCostResponse, ExpensiveToolsResponse
+from app.schemas.enums import DepartmentType
 
 @pytest.mark.asyncio
 async def test_get_department_costs_summary_success():
@@ -111,3 +113,107 @@ async def test_get_department_costs_summary_equality_rule():
 
     # 5. Validation de la règle d'égalité alphabétique
     assert response.summary.most_expensive_department == "Marketing"
+
+@pytest.mark.asyncio
+async def test_get_expensive_tools_success():
+    # 1. Session de base de données simulée
+    mock_db = AsyncMock()
+
+    # 2. Simulation du 1er execute() : Moyenne globale de l'entreprise
+    # Total coûts = 3000€, Total users actifs = 100 -> Moyenne = 30€/user
+    mock_avg_result = MagicMock()
+    mock_avg_row = MagicMock()
+    mock_avg_row.total_cost = 3000.0
+    mock_avg_row.total_users = 100
+    mock_avg_result.first.return_value = mock_avg_row
+
+    # 3. Simulation du 2ème execute() : La liste des outils (triée par coût desc)
+    mock_tools_result = MagicMock()
+
+    # Outil 1 : CRM Enterprise (Coût: 1000, Users: 10 -> Cost/User: 100€)
+    # Ratio = 100 / 30 = 3.33 (> 1.2) -> Rating: "low"
+    tool_1 = SimpleNamespace(
+        id=1,
+        name="CRM Enterprise",
+        monthly_cost=1000.0,
+        active_users_count=10,
+        vendor="BigCorp",
+        owner_department=DepartmentType.SALES,
+    )
+
+    # Outil 2 : Slack Pro (Coût: 500, Users: 25 -> Cost/User: 20€)
+    # Ratio = 20 / 30 = 0.66 (entre 0.5 et 0.8) -> Rating: "good"
+    tool_2 = SimpleNamespace(
+        id=2,
+        name="Slack Pro",
+        monthly_cost=500.0,
+        active_users_count=25,
+        vendor="Slack Inc",
+        owner_department=DepartmentType.ENGINEERING,
+    )
+
+    tools_list = [tool_1, tool_2]
+    mock_tools_result.scalars.return_value.all.return_value = tools_list
+
+    # Configuration des retours successifs du db.execute
+    mock_db.execute.side_effect = [mock_avg_result, mock_tools_result]
+
+    # 4. Appel du contrôleur
+    response = await analytics_controller.get_expensive_tools(db=mock_db, min_cost=100.0, limit=2)
+
+    # 5. Assertions (Vérifications)
+    assert isinstance(response, ExpensiveToolsResponse)
+
+    # Vérification de l'analyse globale
+    assert response.analysis.total_tools_analyzed == 2
+    assert response.analysis.avg_cost_per_user_company == 30.0
+    assert response.analysis.potential_savings_identified == 1000.0  # Seul le CRM est "low" (1000€)
+
+    # Vérification des détails des outils
+    assert response.data[0].name == "CRM Enterprise"
+    assert response.data[0].cost_per_user == 100.0
+    assert response.data[0].efficiency_rating == "low"
+    assert response.data[0].department == "Sales"
+
+    assert response.data[1].name == "Slack Pro"
+    assert response.data[1].cost_per_user == 20.0
+    assert response.data[1].efficiency_rating == "good"
+
+@pytest.mark.asyncio
+async def test_get_expensive_tools_zero_users_and_no_savings():
+    # 1. Session DB simulée
+    mock_db = AsyncMock()
+
+    # 2. Moyenne globale de l'entreprise (100€ total / 10 users = 10€/user moyenne)
+    mock_avg_result = MagicMock()
+    mock_avg_row = MagicMock()
+    mock_avg_row.total_cost = 100.0
+    mock_avg_row.total_users = 10
+    mock_avg_result.first.return_value = mock_avg_row
+
+    # 3. Liste des outils avec un outil à 0 utilisateur (Division par zéro potentielle)
+    mock_tools_result = MagicMock()
+
+    # Outil avec 0 utilisateur actif -> Doit donner un cost_per_user de 0.0 et éviter le crash
+    tool_unused = SimpleNamespace(
+        id=3,
+        name="Unused Tool",
+        monthly_cost=50.0,
+        active_users_count=0,
+        vendor="Ghost Vendor",
+        owner_department=DepartmentType.HR,
+    )  # Ratio = 0 / 10 = 0 (< 0.5) -> Rating: "excellent"
+
+    tools_list = [tool_unused]
+    mock_tools_result.scalars.return_value.all.return_value = tools_list
+
+    mock_db.execute.side_effect = [mock_avg_result, mock_tools_result]
+
+    # 4. Appel du contrôleur
+    response = await analytics_controller.get_expensive_tools(db=mock_db)
+
+    # 5. Assertions
+    assert response.analysis.total_tools_analyzed == 1
+    assert response.data[0].cost_per_user == 0.0  # Sécurité division par zéro activée !
+    assert response.data[0].efficiency_rating == "excellent"
+    assert response.analysis.potential_savings_identified == 0.0  # Aucun outil "low", donc 0 économie

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.schemas.api.analytics import DepartmentCostResponse
+from app.schemas.api.analytics import DepartmentCostResponse, ExpensiveToolsResponse
 from app.database import get_db
 from app.controllers.analytics import analytics_controller
 
@@ -33,3 +33,23 @@ async def get_department_costs(
         db=db, sort_by=sort_by, order=order
     )
     return result
+
+@router.get(
+    "/expensive-tools",
+    response_model=ExpensiveToolsResponse,
+    summary="Obtenir les outils les plus coûteux",
+    description="Retourne la liste des outils les plus chers avec une analyse de leur efficacité et des opportunités de négociation pour Jennifer."
+)
+async def get_expensive_tools(
+    min_cost: float = Query(0.0, ge=0.0, description="Filtrer les outils ayant un coût mensuel supérieur ou égal à cette valeur"),
+    limit: int = Query(10, ge=1, le=100, description="Nombre maximum d'outils à retourner (maximum 100)"),
+    db: AsyncSession = Depends(get_db)
+) -> ExpensiveToolsResponse:
+    """
+    Endpoint de Business Intelligence pour analyser l'efficacité financière des outils.
+    """
+    return await analytics_controller.get_expensive_tools(
+        db=db,
+        min_cost=min_cost,
+        limit=limit
+    )

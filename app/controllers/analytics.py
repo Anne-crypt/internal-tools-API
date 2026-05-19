@@ -1,11 +1,12 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from dataclasses import dataclass
+from typing import Literal
 from app.models.tool import Tool
 from app.models.cost_tracking import CostTracking
 from app.schemas.enums import DepartmentType
 
-from app.schemas.api.analytics import AnalyticsSummary, DepartmentCostResponse, DepartementCostItem
+from app.schemas.api.analytics import AnalyticsSummary, DepartmentCostResponse, DepartementCostItem, ToolCostDetail, AnalyticsExpensiveToolsSummary, ExpensiveToolsResponse
 
 
 
@@ -119,6 +120,94 @@ class AnalyticsController:
                 total_company_cost=round(total_company_cost, 2),
                 departments_count=len(departments_data),
                 most_expensive_department=summary_department,
+            )
+        )
+
+    async def get_expensive_tools(self, db: AsyncSession, min_cost: float = 0.0, limit: int = 10) -> ExpensiveToolsResponse:
+        # 1. Calcul de la moyenne pondérée globale de l'entreprise (avg_cost_per_user_company)
+        # On exclut les outils qui ont 0 utilisateur actif pour éviter de fausser la moyenne ou d'avoir une division par zéro SQL
+        avg_stmt = select(
+            func.sum(Tool.monthly_cost).label("total_cost"),
+            func.sum(Tool.active_users_count).label("total_users")
+        ).where(Tool.active_users_count > 0)
+
+        avg_result = await db.execute(avg_stmt)
+        avg_row = avg_result.first()
+
+        # Gestion de la moyenne pondérée globale
+        total_company_cost = float(avg_row.total_cost) if avg_row and avg_row.total_cost else 0.0
+        total_company_users = avg_row.total_users if avg_row and avg_row.total_users else 0
+
+        if total_company_users > 0:
+            avg_cost_per_user_company = round(total_company_cost / total_company_users, 2)
+        else:
+            avg_cost_per_user_company = 0.0
+
+        # 2. Récupération des outils avec filtres, tri et limite
+        tools_stmt = (
+            select(Tool)
+            .where(Tool.monthly_cost >= min_cost)
+            .order_by(Tool.monthly_cost.desc())
+            .limit(limit)
+        )
+
+        tools_result = await db.execute(tools_stmt)
+        tools = tools_result.scalars().all()
+
+        # 3. Traitement des outils et calcul des métriques individuelles
+        tool_details = []
+        potential_savings_identified = 0.0
+
+        for tool in tools:
+            tool_monthly_cost = float(tool.monthly_cost) if tool.monthly_cost else 0.0
+            efficiency_rating: Literal["excellent", "good", "average", "low"]
+
+            # Calcul du cost_per_user précis avec gestion de la division par zéro
+            if tool.active_users_count > 0:
+                cost_per_user = round(float(tool.monthly_cost / tool.active_users_count), 2)
+            else:
+                cost_per_user = 0.0  # Choix sécurisé si pas d'utilisateur actif
+
+            # Attribution du rating d'efficacité basé sur la logique métier de Jennifer
+            # (Comparaison de cost_per_user vs avg_cost_per_user_company)
+            if avg_cost_per_user_company == 0:
+                efficiency_rating = "average"  # Valeur par défaut si aucune moyenne entreprise n'est calculable
+            else:
+                ratio = cost_per_user / avg_cost_per_user_company
+                if ratio < 0.5:
+                    efficiency_rating = "excellent"
+                elif ratio <= 0.8:
+                    efficiency_rating = "good"
+                elif ratio <= 1.2:
+                    efficiency_rating = "average"
+                else:
+                    efficiency_rating = "low"
+
+            # Calcul des économies potentielles (Somme des coûts des outils "low")
+            if efficiency_rating == "low":
+                potential_savings_identified += tool_monthly_cost
+
+            # On build l'objet Pydantic pour cet outil
+            tool_details.append(
+                ToolCostDetail(
+                    id=tool.id,
+                    name=tool.name,
+                    monthly_cost=tool_monthly_cost,
+                    active_users_count=tool.active_users_count,
+                    cost_per_user=cost_per_user,
+                    department=tool.owner_department,
+                    vendor=tool.vendor or "Unknown",
+                    efficiency_rating=efficiency_rating
+                )
+            )
+
+        # 4. Construction de la réponse globale finale
+        return ExpensiveToolsResponse(
+            data=tool_details,
+            analysis=AnalyticsExpensiveToolsSummary(
+                total_tools_analyzed=len(tool_details),
+                avg_cost_per_user_company=avg_cost_per_user_company,
+                potential_savings_identified=round(potential_savings_identified, 2)
             )
         )
 
