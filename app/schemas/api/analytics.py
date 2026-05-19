@@ -28,7 +28,7 @@ class DepartmentCostResponse(BaseModel):
 
 
 # ==============================================================================
-# ENDPOINT 2: /api/analytics/expensive-tools (Le petit nouveau)
+# ENDPOINT 2: /api/analytics/expensive-tools
 # ==============================================================================
 
 class ExpensiveToolsParams(BaseModel):
@@ -53,3 +53,27 @@ class AnalyticsExpensiveToolsSummary(BaseModel):
 class ExpensiveToolsResponse(BaseModel):
     data: List[ToolCostDetail]
     analysis: AnalyticsExpensiveToolsSummary
+
+
+# ==============================================================================
+# ENDPOINT 3: /api/analytics/tools-by-category (Répartition catégories)
+# ==============================================================================
+
+
+class CategoryCostDetail(BaseModel):
+    category_name: str
+    tools_count: int
+    total_cost: float
+    total_users: int
+    percentage_of_budget: float
+    average_cost_per_user: float
+
+
+class AnalyticsCategoryInsights(BaseModel):
+    most_expensive_category: str
+    most_efficient_category: str
+
+
+class ToolsByCategoryResponse(BaseModel):
+    data: List[CategoryCostDetail]
+    insights: AnalyticsCategoryInsights

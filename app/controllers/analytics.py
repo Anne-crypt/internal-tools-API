@@ -3,11 +3,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dataclasses import dataclass
 from typing import Literal
 from app.models.tool import Tool
+from app.models.category import Category
 from app.models.cost_tracking import CostTracking
 from app.schemas.enums import DepartmentType
 
-from app.schemas.api.analytics import AnalyticsSummary, DepartmentCostResponse, DepartementCostItem, ToolCostDetail, AnalyticsExpensiveToolsSummary, ExpensiveToolsResponse
-
+from app.schemas.api.analytics import (
+    AnalyticsSummary,
+    DepartmentCostResponse,
+    DepartementCostItem,
+    ToolCostDetail,
+    AnalyticsExpensiveToolsSummary,
+    ExpensiveToolsResponse,
+    ToolsByCategoryResponse,
+    AnalyticsCategoryInsights,
+    CategoryCostDetail,
+)
 
 
 class AnalyticsController:
@@ -120,26 +130,34 @@ class AnalyticsController:
                 total_company_cost=round(total_company_cost, 2),
                 departments_count=len(departments_data),
                 most_expensive_department=summary_department,
-            )
+            ),
         )
 
-    async def get_expensive_tools(self, db: AsyncSession, min_cost: float = 0.0, limit: int = 10) -> ExpensiveToolsResponse:
+    async def get_expensive_tools(
+        self, db: AsyncSession, min_cost: float = 0.0, limit: int = 10
+    ) -> ExpensiveToolsResponse:
         # 1. Calcul de la moyenne pondérée globale de l'entreprise (avg_cost_per_user_company)
         # On exclut les outils qui ont 0 utilisateur actif pour éviter de fausser la moyenne ou d'avoir une division par zéro SQL
         avg_stmt = select(
             func.sum(Tool.monthly_cost).label("total_cost"),
-            func.sum(Tool.active_users_count).label("total_users")
+            func.sum(Tool.active_users_count).label("total_users"),
         ).where(Tool.active_users_count > 0)
 
         avg_result = await db.execute(avg_stmt)
         avg_row = avg_result.first()
 
         # Gestion de la moyenne pondérée globale
-        total_company_cost = float(avg_row.total_cost) if avg_row and avg_row.total_cost else 0.0
-        total_company_users = avg_row.total_users if avg_row and avg_row.total_users else 0
+        total_company_cost = (
+            float(avg_row.total_cost) if avg_row and avg_row.total_cost else 0.0
+        )
+        total_company_users = (
+            avg_row.total_users if avg_row and avg_row.total_users else 0
+        )
 
         if total_company_users > 0:
-            avg_cost_per_user_company = round(total_company_cost / total_company_users, 2)
+            avg_cost_per_user_company = round(
+                total_company_cost / total_company_users, 2
+            )
         else:
             avg_cost_per_user_company = 0.0
 
@@ -164,7 +182,9 @@ class AnalyticsController:
 
             # Calcul du cost_per_user précis avec gestion de la division par zéro
             if tool.active_users_count > 0:
-                cost_per_user = round(float(tool.monthly_cost / tool.active_users_count), 2)
+                cost_per_user = round(
+                    float(tool.monthly_cost / tool.active_users_count), 2
+                )
             else:
                 cost_per_user = 0.0  # Choix sécurisé si pas d'utilisateur actif
 
@@ -197,7 +217,7 @@ class AnalyticsController:
                     cost_per_user=cost_per_user,
                     department=tool.owner_department,
                     vendor=tool.vendor or "Unknown",
-                    efficiency_rating=efficiency_rating
+                    efficiency_rating=efficiency_rating,
                 )
             )
 
@@ -207,11 +227,100 @@ class AnalyticsController:
             analysis=AnalyticsExpensiveToolsSummary(
                 total_tools_analyzed=len(tool_details),
                 avg_cost_per_user_company=avg_cost_per_user_company,
-                potential_savings_identified=round(potential_savings_identified, 2)
+                potential_savings_identified=round(potential_savings_identified, 2),
+            ),
+        )
+
+    async def get_tools_by_category(self, db: AsyncSession) -> ToolsByCategoryResponse:
+        # 1. Étape 1 : Calculer le budget total global de l'entreprise
+        total_budget_stmt = select(func.sum(Tool.monthly_cost))
+        total_budget_result = await db.execute(total_budget_stmt)
+        total_budget_raw = total_budget_result.scalar()
+        company_total_cost = float(total_budget_raw) if total_budget_raw else 0.0
+
+        # 2. Étape 2 : Requête groupée avec JOIN entre Tool et Category
+        category_stmt = (
+            select(
+                Category.name.label("category_name"),
+                func.count(Tool.id).label("tools_count"),
+                func.sum(Tool.monthly_cost).label("total_cost"),
+                func.sum(Tool.active_users_count).label("total_users"),
             )
+            .join(Tool, Tool.category_id == Category.id)
+            .group_by(Category.id, Category.name)
+        )
+
+        category_result = await db.execute(category_stmt)
+        rows = category_result.all()
+
+        # 3. Étape 3 : Traitement des données par catégorie
+        categories_details = []
+
+        # Variables pour calculer les insights métier
+        max_cost = -1.0
+        most_expensive_category = "None"
+
+        min_cost_per_user = float("inf")
+        most_efficient_category = "None"
+
+        for row in rows:
+            # Sécurisation des types pour Mypy
+            cat_name = str(row.category_name)
+            tools_count = int(row.tools_count) if row.tools_count else 0
+            total_cost = float(row.total_cost) if row.total_cost else 0.0
+            total_users = int(row.total_users) if row.total_users else 0
+
+            # Pourcentage du budget (évite la division par zéro si budget global nul)
+            if company_total_cost > 0:
+                percentage_of_budget = round((total_cost / company_total_cost) * 100, 1)
+            else:
+                percentage_of_budget = 0.0
+
+            # Coût moyen par utilisateur (sécurité division par zéro)
+            if total_users > 0:
+                average_cost_per_user = round(total_cost / total_users, 2)
+            else:
+                average_cost_per_user = 0.0
+
+            # --- Calcul des Insights ---
+            # Insight 1 : La plus chère
+            if total_cost > max_cost:
+                max_cost = total_cost
+                most_expensive_category = cat_name
+            elif total_cost == max_cost:
+                # Règle de départage optionnelle : ordre alphabétique en cas d'égalité stricte de coût
+                most_expensive_category = min(most_expensive_category, cat_name)
+
+            # Insight 2 : La plus efficace (coût par utilisateur le plus bas)
+            # Clarification : On exclut complètement les catégories sans utilisateurs (> 0)
+            if total_users > 0:
+                if average_cost_per_user < min_cost_per_user:
+                    min_cost_per_user = average_cost_per_user
+                    most_efficient_category = cat_name
+                elif average_cost_per_user == min_cost_per_user:
+                    # Clarification : En cas d'égalité, ordre alphabétique du category_name
+                    most_efficient_category = min(most_efficient_category, cat_name)
+
+            # Construction de l'objet de détail pour la liste principale
+            categories_details.append(
+                CategoryCostDetail(
+                    category_name=cat_name,
+                    tools_count=tools_count,
+                    total_cost=total_cost,
+                    total_users=total_users,
+                    percentage_of_budget=percentage_of_budget,
+                    average_cost_per_user=average_cost_per_user,
+                )
+            )
+
+        # 4. Étape 4 : Retourner la réponse complète
+        return ToolsByCategoryResponse(
+            data=categories_details,
+            insights=AnalyticsCategoryInsights(
+                most_expensive_category=most_expensive_category,
+                most_efficient_category=most_efficient_category,
+            ),
         )
 
 
 analytics_controller = AnalyticsController()
-
-
