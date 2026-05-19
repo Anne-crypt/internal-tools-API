@@ -5,6 +5,7 @@ from app.schemas.api.analytics import (
     ExpensiveToolsResponse,
     LowUsageToolsResponse,
     ToolsByCategoryResponse,
+    VendorSummaryResponse,
 )
 from app.database import get_db
 from app.controllers.analytics import analytics_controller
@@ -88,16 +89,32 @@ async def get_tools_by_category(
     "/low-usage-tools",
     response_model=LowUsageToolsResponse,
     summary="Identifier les outils sous-utilisés",
-    description="Retourne la liste des logiciels ayant un faible nombre d'utilisateurs actifs pour aider Jennifer à planifier des résiliations ou des downgrades."
+    description="Retourne la liste des logiciels ayant un faible nombre d'utilisateurs actifs pour aider Jennifer à planifier des résiliations ou des downgrades.",
 )
 async def get_low_usage_tools(
-    max_users: int = Query(5, ge=0, description="Seuil maximum d'utilisateurs actifs pour considérer un outil comme sous-utilisé (défaut: 5)"),
-    db: AsyncSession = Depends(get_db)
+    max_users: int = Query(
+        5,
+        ge=0,
+        description="Seuil maximum d'utilisateurs actifs pour considérer un outil comme sous-utilisé (défaut: 5)",
+    ),
+    db: AsyncSession = Depends(get_db),
 ) -> LowUsageToolsResponse:
     """
     Endpoint d'optimisation budgétaire (Cost Optimization) basé sur le volume d'utilisateurs.
     """
-    return await analytics_controller.get_low_usage_tools(
-        db=db,
-        max_users=max_users
-    )
+    return await analytics_controller.get_low_usage_tools(db=db, max_users=max_users)
+
+
+@router.get(
+    "/vendor-summary",
+    response_model=VendorSummaryResponse,
+    summary="Analyse et résumé des fournisseurs",
+    description="Retourne des indicateurs agrégés par fournisseur (coûts, utilisateurs, départements uniques triés) et identifie des opportunités de consolidation pour Alex.",
+)
+async def get_vendor_summary(
+    db: AsyncSession = Depends(get_db),
+) -> VendorSummaryResponse:
+    """
+    Endpoint de rationalisation du portefeuille de fournisseurs (Vendor Management).
+    """
+    return await analytics_controller.get_vendor_summary(db=db)

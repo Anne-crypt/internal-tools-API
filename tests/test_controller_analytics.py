@@ -7,6 +7,7 @@ from app.schemas.api.analytics import (
     ExpensiveToolsResponse,
     ToolsByCategoryResponse,
     LowUsageToolsResponse,
+    VendorSummaryResponse,
 )
 from app.schemas.enums import DepartmentType
 
@@ -463,3 +464,106 @@ async def test_get_low_usage_tools_filter_limit():
     assert response.savings_analysis.total_underutilized_tools == 1
     assert response.data[0].id == 10
     assert response.savings_analysis.potential_monthly_savings == 120.0
+
+
+@pytest.mark.asyncio
+async def test_get_vendor_summary_success():
+    # 1. Session de base de données simulée
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+
+    # Fournisseur Google : 2 outils (Engineering et Sales), total coût = 200€, 100 utilisateurs
+    # average_cost_per_user = 200 / 100 = 2.0€ -> "excellent"
+    tool_g1 = MagicMock(
+        id=1,
+        name="Workspace",
+        monthly_cost=150.0,
+        active_users_count=60,
+        vendor="Google",
+    )
+    tool_g1.owner_department = DepartmentType.SALES
+
+    tool_g2 = MagicMock(
+        id=2,
+        name="Cloud",
+        monthly_cost=50.0,
+        active_users_count=40,
+        vendor="Google",
+    )
+    tool_g2.owner_department = DepartmentType.ENGINEERING
+
+    # Fournisseur BigCorp : 1 outil, total coût = 500€, 10 utilisateurs
+    # average_cost_per_user = 500 / 10 = 50.0€ -> "poor"
+    tool_bc = MagicMock(
+        id=3,
+        name="Legacy ERP",
+        monthly_cost=500.0,
+        active_users_count=10,
+        vendor="BigCorp",
+    )
+    tool_bc.owner_department = DepartmentType.ENGINEERING
+
+    mock_result.scalars.return_value.all.return_value = [tool_g1, tool_g2, tool_bc]
+    mock_db.execute.return_value = mock_result
+
+    # 2. Appel du contrôleur
+    response = await analytics_controller.get_vendor_summary(db=mock_db)
+
+    # 3. Assertions
+    assert isinstance(response, VendorSummaryResponse)
+    assert len(response.data) == 2
+
+    # Vérification Google (Déduplication et ordre alphabétique des départements)
+    google_data = next(v for v in response.data if v.vendor == "Google")
+    assert google_data.tools_count == 2
+    assert google_data.total_monthly_cost == 200.0
+    assert google_data.total_users == 100
+    assert google_data.departments == "Engineering,Sales"  # Trié alphabétiquement !
+    assert google_data.average_cost_per_user == 2.0
+    assert google_data.vendor_efficiency == "excellent"
+
+    # Vérification des Insights globaux
+    assert response.vendor_insights.most_expensive_vendor == "BigCorp"
+    assert response.vendor_insights.most_efficient_vendor == "Google"
+
+    # BigCorp a exactement 1 outil actif, Google en a 2 -> Donc 1 seul single_tool_vendor
+    assert response.vendor_insights.single_tool_vendors == 1
+
+
+@pytest.mark.asyncio
+async def test_get_vendor_summary_equality_and_consolidation():
+    # 1. Session DB simulée
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+
+    # Deux fournisseurs avec le MÊME coût par utilisateur (10.0€)
+    # Vendor "Beta" et Vendor "Alpha". "Alpha" doit gagner l'insight par ordre alphabétique.
+    tool_alpha = MagicMock(
+        id=4,
+        name="Tool A",
+        monthly_cost=100.0,
+        active_users_count=10,
+        vendor="Alpha",
+    )
+    tool_alpha.owner_department = DepartmentType.MARKETING
+
+    tool_beta = MagicMock(
+        id=5,
+        name="Tool B",
+        monthly_cost=100.0,
+        active_users_count=10,
+        vendor="Beta",
+    )
+    tool_beta.owner_department = DepartmentType.MARKETING
+
+    mock_result.scalars.return_value.all.return_value = [tool_alpha, tool_beta]
+    mock_db.execute.return_value = mock_result
+
+    # 2. Appel du contrôleur
+    response = await analytics_controller.get_vendor_summary(db=mock_db)
+
+    # 3. Assertions sur le départage alphabétique
+    assert response.vendor_insights.most_efficient_vendor == "Alpha"  # 'A' < 'B'
+
+    # Les deux n'ont qu'un seul outil chacun -> 2 opportunités de consolidation
+    assert response.vendor_insights.single_tool_vendors == 2

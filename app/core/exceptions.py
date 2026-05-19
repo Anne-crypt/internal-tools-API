@@ -79,18 +79,15 @@ async def global_exception_handler(request: Request, exc: Exception):
     ):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={
-                "error": "Bad request",
-                "message": error_msg
-            }
+            content={"error": "Bad request", "message": error_msg},
         )
     if "connection" in error_msg.lower() or "dialing" in error_msg.lower():
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "error": "Internal server error",
-                "message": "Database connection failed"
-            }
+                "message": "Database connection failed",
+            },
         )
 
     if isinstance(exc, sqlalchemy_exc.DBAPIError):
@@ -98,14 +95,14 @@ async def global_exception_handler(request: Request, exc: Exception):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "error": "Internal server error",
-                "message": "Database error occurred"
-            }
+                "message": "Database error occurred",
+            },
         )
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "error": "Internal server error",
-            "message": "An unexpected error occurred"
-        }
+            "message": "An unexpected error occurred",
+        },
     )

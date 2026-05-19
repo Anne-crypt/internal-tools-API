@@ -1,11 +1,11 @@
-
 from pydantic import BaseModel, Field
-from typing import List, Literal
+from typing import List, Literal, Optional
 from app.schemas.enums import DepartmentType
 
 # ==============================================================================
 # ENPOINT 1: /api/analytics/department-costs
 # ==============================================================================
+
 
 class DepartementCostItem(BaseModel):
     department: DepartmentType
@@ -25,15 +25,22 @@ class AnalyticsSummary(BaseModel):
 class DepartmentCostResponse(BaseModel):
     department_costs: list[DepartementCostItem]
     summary: AnalyticsSummary
+    message: Optional[str] = None
 
 
 # ==============================================================================
 # ENDPOINT 2: /api/analytics/expensive-tools
 # ==============================================================================
 
+
 class ExpensiveToolsParams(BaseModel):
-    limit: int = Field(10, ge=1, le=100, description="Nombre maximum d'outils à retourner")
-    min_cost: float = Field(0.0, ge=0.0, description="Filtre sur le coût mensuel minimum")
+    limit: int = Field(
+        10, ge=1, le=100, description="Nombre maximum d'outils à retourner"
+    )
+    min_cost: float = Field(
+        0.0, ge=0.0, description="Filtre sur le coût mensuel minimum"
+    )
+
 
 class ToolCostDetail(BaseModel):
     id: int
@@ -45,10 +52,12 @@ class ToolCostDetail(BaseModel):
     vendor: str
     efficiency_rating: Literal["excellent", "good", "average", "low"]
 
+
 class AnalyticsExpensiveToolsSummary(BaseModel):
     total_tools_analyzed: int
     avg_cost_per_user_company: float
     potential_savings_identified: float
+
 
 class ExpensiveToolsResponse(BaseModel):
     data: List[ToolCostDetail]
@@ -105,3 +114,29 @@ class AnalyticsSavingsAnalysis(BaseModel):
 class LowUsageToolsResponse(BaseModel):
     data: List[LowUsageToolDetail]
     savings_analysis: AnalyticsSavingsAnalysis
+
+
+# ==============================================================================
+# ENDPOINT 5: /api/analytics/vendor-summary (Analyse fournisseurs)
+# ==============================================================================
+
+
+class VendorCostDetail(BaseModel):
+    vendor: str
+    tools_count: int
+    total_monthly_cost: float
+    total_users: int
+    departments: str  # Chaîne concaténée, ex: "Engineering,Marketing,Sales"
+    average_cost_per_user: float
+    vendor_efficiency: Literal["excellent", "good", "average", "poor"]
+
+
+class AnalyticsVendorInsights(BaseModel):
+    most_expensive_vendor: str
+    most_efficient_vendor: str
+    single_tool_vendors: int
+
+
+class VendorSummaryResponse(BaseModel):
+    data: List[VendorCostDetail]
+    vendor_insights: AnalyticsVendorInsights

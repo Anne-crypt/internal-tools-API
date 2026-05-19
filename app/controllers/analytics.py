@@ -1,11 +1,11 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, TypedDict
 from app.models.tool import Tool
 from app.models.category import Category
 from app.models.cost_tracking import CostTracking
-from app.schemas.enums import DepartmentType
+from app.schemas.enums import DepartmentType, ToolStatusType
 
 from app.schemas.api.analytics import (
     AnalyticsSavingsAnalysis,
@@ -20,6 +20,9 @@ from app.schemas.api.analytics import (
     ToolsByCategoryResponse,
     AnalyticsCategoryInsights,
     CategoryCostDetail,
+    VendorCostDetail,
+    VendorSummaryResponse,
+    AnalyticsVendorInsights,
 )
 
 
@@ -50,10 +53,16 @@ class AnalyticsController:
                 ).label("average_cost_per_tool"),
             )
             .join(CostTracking, Tool.id == CostTracking.tool_id)
+            .where(Tool.status == ToolStatusType.ACTIVE)
             .group_by(Tool.owner_department)
         )
 
-        stmt_total = select(func.sum(CostTracking.total_monthly_cost))
+        stmt_total = (
+            select(func.sum(CostTracking.total_monthly_cost))
+            .select_from(CostTracking)
+            .join(Tool, Tool.id == CostTracking.tool_id)
+            .where(Tool.status == ToolStatusType.ACTIVE)
+        )
         total_company_cost = float((await db.execute(stmt_total)).scalar() or 0.0)
 
         result_dept = await db.execute(stmt_dept)
@@ -134,6 +143,11 @@ class AnalyticsController:
                 departments_count=len(departments_data),
                 most_expensive_department=summary_department,
             ),
+            message=(
+                None
+                if departments_data
+                else "No analytics data available - ensure tools data exists"
+            ),
         )
 
     async def get_expensive_tools(
@@ -144,7 +158,10 @@ class AnalyticsController:
         avg_stmt = select(
             func.sum(Tool.monthly_cost).label("total_cost"),
             func.sum(Tool.active_users_count).label("total_users"),
-        ).where(Tool.active_users_count > 0)
+        ).where(
+            Tool.status == ToolStatusType.ACTIVE,
+            Tool.active_users_count > 0,
+        )
 
         avg_result = await db.execute(avg_stmt)
         avg_row = avg_result.first()
@@ -167,7 +184,10 @@ class AnalyticsController:
         # 2. Récupération des outils avec filtres, tri et limite
         tools_stmt = (
             select(Tool)
-            .where(Tool.monthly_cost >= min_cost)
+            .where(
+                Tool.status == ToolStatusType.ACTIVE,
+                Tool.monthly_cost >= min_cost,
+            )
             .order_by(Tool.monthly_cost.desc())
             .limit(limit)
         )
@@ -236,7 +256,9 @@ class AnalyticsController:
 
     async def get_tools_by_category(self, db: AsyncSession) -> ToolsByCategoryResponse:
         # 1. Étape 1 : Calculer le budget total global de l'entreprise
-        total_budget_stmt = select(func.sum(Tool.monthly_cost))
+        total_budget_stmt = select(func.sum(Tool.monthly_cost)).where(
+            Tool.status == ToolStatusType.ACTIVE
+        )
         total_budget_result = await db.execute(total_budget_stmt)
         total_budget_raw = total_budget_result.scalar()
         company_total_cost = float(total_budget_raw) if total_budget_raw else 0.0
@@ -250,6 +272,7 @@ class AnalyticsController:
                 func.sum(Tool.active_users_count).label("total_users"),
             )
             .join(Tool, Tool.category_id == Category.id)
+            .where(Tool.status == ToolStatusType.ACTIVE)
             .group_by(Category.id, Category.name)
         )
 
@@ -332,7 +355,10 @@ class AnalyticsController:
         # On inclut automatiquement les outils à 0 utilisateur (0 <= max_users est toujours vrai pour max_users >= 0)
         stmt = (
             select(Tool)
-            .where(Tool.active_users_count <= max_users)
+            .where(
+                Tool.status == ToolStatusType.ACTIVE,
+                Tool.active_users_count <= max_users,
+            )
             .order_by(Tool.active_users_count.asc(), Tool.monthly_cost.desc())
         )
 
@@ -395,6 +421,129 @@ class AnalyticsController:
                 total_underutilized_tools=len(tool_details),
                 potential_monthly_savings=round(potential_monthly_savings, 2),
                 potential_annual_savings=round(potential_annual_savings, 2),
+            ),
+        )
+
+    async def get_vendor_summary(self, db: AsyncSession) -> VendorSummaryResponse:
+        class VendorMetrics(TypedDict):
+            tools_count: int
+            total_cost: float
+            total_users: int
+            departments: set[str]
+
+        # 1. Récupération de tous les outils depuis la base de données
+        stmt = select(Tool).where(Tool.status == ToolStatusType.ACTIVE)
+        result = await db.execute(stmt)
+        tools = result.scalars().all()
+
+        # 2. Structure temporaire pour stocker l'agrégation par fournisseur
+        # Format: { vendor_name: { "tools_count": int, "total_cost": float, "total_users": int, "departments": set } }
+        vendor_map: dict[str, VendorMetrics] = {}
+
+        for tool in tools:
+            vendor_name = tool.vendor if tool.vendor else "Unknown Vendor"
+
+            # Sécurisation des types pour Mypy
+            tool_monthly_cost = float(tool.monthly_cost) if tool.monthly_cost else 0.0
+            users_count = int(tool.active_users_count) if tool.active_users_count else 0
+
+            # Extraction propre de la valeur textuelle de l'Enum department
+            dept_name = tool.owner_department.value if tool.owner_department else None
+
+            if vendor_name not in vendor_map:
+                vendor_map[vendor_name] = {
+                    "tools_count": 0,
+                    "total_cost": 0.0,
+                    "total_users": 0,
+                    "departments": set[str](),
+                }
+
+            vendor_map[vendor_name]["tools_count"] += 1
+            vendor_map[vendor_name]["total_cost"] += tool_monthly_cost
+            vendor_map[vendor_name]["total_users"] += users_count
+
+            if dept_name:
+                vendor_map[vendor_name]["departments"].add(dept_name)
+
+        # 3. Traitement des données agrégées et calcul des métriques
+        vendor_details = []
+
+        max_cost = -1.0
+        most_expensive_vendor = "None"
+
+        min_cost_per_user = float("inf")
+        most_efficient_vendor = "None"
+
+        single_tool_vendors_count = 0
+
+        for vendor_name, metrics in vendor_map.items():
+            total_cost = metrics["total_cost"]
+            total_users = metrics["total_users"]
+            tools_count = metrics["tools_count"]
+            vendor_efficiency: Literal["excellent", "good", "average", "poor"]
+
+            # Règle single_tool_vendors : Uniquement les fournisseurs avec exactement 1 outil actif
+            if tools_count == 1:
+                single_tool_vendors_count += 1
+
+            # Concaténation des départements uniques triés par ordre alphabétique
+            sorted_depts = sorted(list(metrics["departments"]))
+            departments_str = ",".join(sorted_depts) if sorted_depts else "None"
+
+            # Coût moyen par utilisateur (sécurité division par zéro)
+            if total_users > 0:
+                average_cost_per_user = round(total_cost / total_users, 2)
+            else:
+                average_cost_per_user = 0.0
+
+            # Détermination du vendor_efficiency selon la grille d'Alex
+            if total_users == 0:
+                vendor_efficiency = (
+                    "poor"  # Option sécurisée si aucun utilisateur n'amortit le coût
+                )
+            elif average_cost_per_user < 5.0:
+                vendor_efficiency = "excellent"
+            elif 5.0 <= average_cost_per_user <= 15.0:
+                vendor_efficiency = "good"
+            elif 15.0 < average_cost_per_user <= 25.0:
+                vendor_efficiency = "average"
+            else:
+                vendor_efficiency = "poor"
+
+            # --- Calcul des Insights ---
+            # Insight 1 : Le plus cher
+            if total_cost > max_cost:
+                max_cost = total_cost
+                most_expensive_vendor = vendor_name
+            elif total_cost == max_cost:
+                most_expensive_vendor = min(most_expensive_vendor, vendor_name)
+
+            # Insight 2 : Le plus efficace (Exclusion de ceux à 0 utilisateur)
+            if total_users > 0:
+                if average_cost_per_user < min_cost_per_user:
+                    min_cost_per_user = average_cost_per_user
+                    most_efficient_vendor = vendor_name
+                elif average_cost_per_user == min_cost_per_user:
+                    most_efficient_vendor = min(most_efficient_vendor, vendor_name)
+
+            vendor_details.append(
+                VendorCostDetail(
+                    vendor=vendor_name,
+                    tools_count=tools_count,
+                    total_monthly_cost=round(total_cost, 2),
+                    total_users=total_users,
+                    departments=departments_str,
+                    average_cost_per_user=average_cost_per_user,
+                    vendor_efficiency=vendor_efficiency,
+                )
+            )
+
+        return VendorSummaryResponse(
+            data=vendor_details,
+            vendor_insights=AnalyticsVendorInsights(
+                most_expensive_vendor=most_expensive_vendor,
+                most_efficient_vendor=most_efficient_vendor,
+                single_tool_vendors=single_tool_vendors_count,
             ),
         )
 
