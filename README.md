@@ -37,6 +37,7 @@ Gestion stricte du Business Logic (Filtres et Validation) : Implémentation de v
 
 - [Structure_projet_expliquee]
 Le projet suit une architecture modulaire et découplée :
+```text
 app/
 ├── api/             # Couche transport (Routes HTTP et contrôleurs)
 ├── core/            # Configuration globale, sécurité et gestionnaires d'exceptions
@@ -45,6 +46,7 @@ app/
 └── schemas/         # Schémas de validation de données (Pydantic)
     ├── api/         # Schémas d'E/S pour les endpoints (Request/Response)
     └── table/       # Schémas miroirs des types de tables / Enums
+```
 
 Choix d'Architecture - Schémas Futurproof :
 L'architecture des schémas Pydantic a été rigoureusement séparée en deux sous-dossiers : schemas/api/ (qui gère la forme des requêtes et réponses HTTP) et schemas/table/ (qui représente les types de données stricts de la base de données comme les structures de tables ou les Enums).
