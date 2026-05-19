@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.api.analytics import (
     DepartmentCostResponse,
     ExpensiveToolsResponse,
+    LowUsageToolsResponse,
     ToolsByCategoryResponse,
 )
 from app.database import get_db
@@ -81,3 +82,22 @@ async def get_tools_by_category(
     Endpoint de Business Intelligence pour analyser la stack technique par domaine/catégorie.
     """
     return await analytics_controller.get_tools_by_category(db=db)
+
+
+@router.get(
+    "/low-usage-tools",
+    response_model=LowUsageToolsResponse,
+    summary="Identifier les outils sous-utilisés",
+    description="Retourne la liste des logiciels ayant un faible nombre d'utilisateurs actifs pour aider Jennifer à planifier des résiliations ou des downgrades."
+)
+async def get_low_usage_tools(
+    max_users: int = Query(5, ge=0, description="Seuil maximum d'utilisateurs actifs pour considérer un outil comme sous-utilisé (défaut: 5)"),
+    db: AsyncSession = Depends(get_db)
+) -> LowUsageToolsResponse:
+    """
+    Endpoint d'optimisation budgétaire (Cost Optimization) basé sur le volume d'utilisateurs.
+    """
+    return await analytics_controller.get_low_usage_tools(
+        db=db,
+        max_users=max_users
+    )

@@ -6,6 +6,7 @@ from app.schemas.api.analytics import (
     DepartmentCostResponse,
     ExpensiveToolsResponse,
     ToolsByCategoryResponse,
+    LowUsageToolsResponse,
 )
 from app.schemas.enums import DepartmentType
 
@@ -365,3 +366,100 @@ async def test_get_tools_by_category_equality_and_exclusion_rules():
     # L'outil le plus efficace doit être "Design" (Égalité de coût par user à 10€ avec Marketing, mais 'D' < 'M')
     # Et "Ghost Category" a été ignorée malgré ses 0€ car elle n'a aucun utilisateur actif.
     assert response.insights.most_efficient_category == "Design"
+
+
+@pytest.mark.asyncio
+async def test_get_low_usage_tools_success():
+    # 1. Session de base de données simulée
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+
+    # Outil 1 : Outil fantôme (0 user) -> Doit être "high" d'office
+    # Économies mensuelles potentielles + 120.0
+    tool_ghost = SimpleNamespace(
+        id=10,
+        name="Ghost Software",
+        monthly_cost=120.0,
+        active_users_count=0,
+        vendor="InvisCorp",
+        owner_department=DepartmentType.HR,
+    )
+
+    # Outil 2 : Outil sous-utilisé (2 users) -> Cost/User = 80 / 2 = 40.0€ -> "medium"
+    # Économies mensuelles potentielles + 80.0
+    tool_medium = SimpleNamespace(
+        id=11,
+        name="Semi Used Tool",
+        monthly_cost=80.0,
+        active_users_count=2,
+        vendor="NormVendor",
+        owner_department=DepartmentType.MARKETING,
+    )
+
+    # Outil 3 : Outil peu cher (4 users) -> Cost/User = 40 / 4 = 10.0€ -> "low"
+    # Économies mensuelles potentielles + 0.0 (Les "low" sont exclus des économies)
+    tool_low = SimpleNamespace(
+        id=12,
+        name="Cheap Tool",
+        monthly_cost=40.0,
+        active_users_count=4,
+        vendor="CheapVendor",
+        owner_department=DepartmentType.SALES,
+    )
+
+    mock_result.scalars.return_value.all.return_value = [
+        tool_ghost,
+        tool_medium,
+        tool_low,
+    ]
+    mock_db.execute.return_value = mock_result
+
+    # 2. Appel du contrôleur avec la valeur par défaut (max_users=5)
+    response = await analytics_controller.get_low_usage_tools(db=mock_db, max_users=5)
+
+    # 3. Assertions
+    assert isinstance(response, LowUsageToolsResponse)
+    assert response.savings_analysis.total_underutilized_tools == 3
+
+    # Économies : Ghost (120) + Medium (80) = 200€ / mois. Annuel = 200 * 12 = 2400€
+    assert response.savings_analysis.potential_monthly_savings == 200.0
+    assert response.savings_analysis.potential_annual_savings == 2400.0
+
+    # Vérification du comportement de l'outil fantôme (0 user)
+    ghost_data = next(t for t in response.data if t.id == 10)
+    assert ghost_data.warning_level == "high"
+    assert ghost_data.cost_per_user == 0.0
+    assert ghost_data.potential_action == "Consider canceling or downgrading"
+
+    # Vérification du comportement de l'outil "medium"
+    medium_data = next(t for t in response.data if t.id == 11)
+    assert medium_data.warning_level == "medium"
+    assert medium_data.potential_action == "Review usage and consider optimization"
+
+
+@pytest.mark.asyncio
+async def test_get_low_usage_tools_filter_limit():
+    # 1. Session DB simulée
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+
+    # Si max_users = 1, seul l'outil fantôme devrait être retourné par la requête SQL simulée
+    tool_ghost = SimpleNamespace(
+        id=10,
+        name="Ghost Software",
+        monthly_cost=120.0,
+        active_users_count=0,
+        vendor="InvisCorp",
+        owner_department=DepartmentType.HR,
+    )
+
+    mock_result.scalars.return_value.all.return_value = [tool_ghost]
+    mock_db.execute.return_value = mock_result
+
+    # 2. Appel du contrôleur avec max_users strict (= 1)
+    response = await analytics_controller.get_low_usage_tools(db=mock_db, max_users=1)
+
+    # 3. Vérification que la logique globale s'adapte au filtre SQL
+    assert response.savings_analysis.total_underutilized_tools == 1
+    assert response.data[0].id == 10
+    assert response.savings_analysis.potential_monthly_savings == 120.0

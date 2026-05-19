@@ -8,9 +8,12 @@ from app.models.cost_tracking import CostTracking
 from app.schemas.enums import DepartmentType
 
 from app.schemas.api.analytics import (
+    AnalyticsSavingsAnalysis,
     AnalyticsSummary,
     DepartmentCostResponse,
     DepartementCostItem,
+    LowUsageToolDetail,
+    LowUsageToolsResponse,
     ToolCostDetail,
     AnalyticsExpensiveToolsSummary,
     ExpensiveToolsResponse,
@@ -319,6 +322,79 @@ class AnalyticsController:
             insights=AnalyticsCategoryInsights(
                 most_expensive_category=most_expensive_category,
                 most_efficient_category=most_efficient_category,
+            ),
+        )
+
+    async def get_low_usage_tools(
+        self, db: AsyncSession, max_users: int = 5
+    ) -> LowUsageToolsResponse:
+        # 1. Requête SQL pour filtrer les outils sous-utilisés
+        # On inclut automatiquement les outils à 0 utilisateur (0 <= max_users est toujours vrai pour max_users >= 0)
+        stmt = (
+            select(Tool)
+            .where(Tool.active_users_count <= max_users)
+            .order_by(Tool.active_users_count.asc(), Tool.monthly_cost.desc())
+        )
+
+        result = await db.execute(stmt)
+        tools = result.scalars().all()
+
+        # 2. Initialisation des compteurs et variables
+        tool_details = []
+        potential_monthly_savings = 0.0
+
+        for tool in tools:
+            # Sécurisation des types pour Mypy
+            tool_monthly_cost = float(tool.monthly_cost) if tool.monthly_cost else 0.0
+            users_count = int(tool.active_users_count) if tool.active_users_count else 0
+            warning_level: Literal["high", "medium", "low"]
+
+            # Calcul du cost_per_user (gestion division par zéro)
+            if users_count > 0:
+                cost_per_user = round(tool_monthly_cost / users_count, 2)
+            else:
+                cost_per_user = 0.0
+
+            # 3. Logique warning_level et potential_action
+            # Règle : Les outils à 0 utilisateur passent automatiquement en "high"
+            if users_count == 0 or cost_per_user > 50.0:
+                warning_level = "high"
+                potential_action = "Consider canceling or downgrading"
+            elif 20.0 <= cost_per_user <= 50.0:
+                warning_level = "medium"
+                potential_action = "Review usage and consider optimization"
+            else:
+                warning_level = "low"
+                potential_action = "Monitor usage trends"
+
+            # 4. Calcul des économies (Somme des coûts des outils "high" et "medium")
+            if warning_level in ["high", "medium"]:
+                potential_monthly_savings += tool_monthly_cost
+
+            # Construction de l'objet de détail
+            tool_details.append(
+                LowUsageToolDetail(
+                    id=tool.id,
+                    name=tool.name,
+                    monthly_cost=tool_monthly_cost,
+                    active_users_count=users_count,
+                    cost_per_user=cost_per_user,
+                    department=tool.owner_department,
+                    vendor=tool.vendor or "Unknown",
+                    warning_level=warning_level,
+                    potential_action=potential_action,
+                )
+            )
+
+        # 5. Calcul des économies annuelles
+        potential_annual_savings = potential_monthly_savings * 12
+
+        return LowUsageToolsResponse(
+            data=tool_details,
+            savings_analysis=AnalyticsSavingsAnalysis(
+                total_underutilized_tools=len(tool_details),
+                potential_monthly_savings=round(potential_monthly_savings, 2),
+                potential_annual_savings=round(potential_annual_savings, 2),
             ),
         )
 

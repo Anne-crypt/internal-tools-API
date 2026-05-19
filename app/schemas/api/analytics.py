@@ -77,3 +77,31 @@ class AnalyticsCategoryInsights(BaseModel):
 class ToolsByCategoryResponse(BaseModel):
     data: List[CategoryCostDetail]
     insights: AnalyticsCategoryInsights
+
+
+# ==============================================================================
+# ENDPOINT 4: /api/analytics/low-usage-tools (Outils sous-utilisés)
+# ==============================================================================
+
+
+class LowUsageToolDetail(BaseModel):
+    id: int
+    name: str
+    monthly_cost: float
+    active_users_count: int
+    cost_per_user: float
+    department: DepartmentType
+    vendor: str
+    warning_level: Literal["high", "medium", "low"]
+    potential_action: str
+
+
+class AnalyticsSavingsAnalysis(BaseModel):
+    total_underutilized_tools: int
+    potential_monthly_savings: float
+    potential_annual_savings: float
+
+
+class LowUsageToolsResponse(BaseModel):
+    data: List[LowUsageToolDetail]
+    savings_analysis: AnalyticsSavingsAnalysis
